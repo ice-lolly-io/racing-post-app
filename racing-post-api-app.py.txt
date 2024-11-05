@@ -1,0 +1,76 @@
+import requests
+import pandas as pd
+import numpy as np
+from requests.auth import HTTPBasicAuth
+
+# Define weights for each scoring factor
+WEIGHTS = {
+    'win_percentage': 0.5,  # Adjust based on importance
+    'profit_loss': 0.3,
+    'actual_expected': 0.2
+}
+
+# Define the API base URL and credentials
+base_url = "https://api.theracingapi.com"  # Base URL for The Racing API
+username = "vdyLumb5e2U9D9JtcttKUTCv"  # Your API username
+password = "1WEhCpMf8TBO9zP19qyISpyD"  # Your API password
+
+# Function to fetch course data from the API using HTTP Basic Auth
+def fetch_course_data(region_codes=None):
+    try:
+        url = f"{base_url}/v1/courses"
+        # Include region codes in the query parameters if provided
+        params = {}
+        if region_codes:
+            params['region_codes'] = region_codes
+        
+        # Make the request with HTTP Basic Authentication and query parameters
+        response = requests.get(url, auth=HTTPBasicAuth(username, password), params=params)
+        response.raise_for_status()  # Check for HTTP errors
+        return response.json()  # Assuming the API returns JSON
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data: {e}")
+        return None
+
+# Fetch courses for a specific region (example: 'gb' for Great Britain and 'ire' for Ireland)
+data = fetch_course_data(region_codes=['gb', 'ire'])
+
+# If data is fetched successfully, convert to DataFrame and flatten
+if data:
+    # Flatten the nested 'courses' data to create individual columns
+    courses_df = pd.json_normalize(data, 'courses')
+    print("Flattened course data loaded successfully!")
+    print(courses_df.head())
+else:
+    print("Failed to load course data.")
+
+# Sample scoring function based on win percentage, profit/loss, and actual/expected stats
+def calculate_scores(df):
+    # Example columns: 'win_percentage', 'profit_loss', 'actual_expected'
+    # Normalize values to [0, 1] range for each metric
+    df['win_score'] = df['win_percentage'] / df['win_percentage'].max()
+    df['profit_loss_score'] = df['profit_loss'] / df['profit_loss'].max()
+    df['actual_expected_score'] = df['actual_expected'] / df['actual_expected'].max()
+    
+    # Apply weights to calculate a final "confidence score"
+    df['confidence_score'] = (
+        df['win_score'] * WEIGHTS['win_percentage'] +
+        df['profit_loss_score'] * WEIGHTS['profit_loss'] +
+        df['actual_expected_score'] * WEIGHTS['actual_expected']
+    )
+    
+    return df[['course', 'confidence_score']].sort_values(by='confidence_score', ascending=False)
+
+# Apply scoring if data is available
+if data:
+    # Add dummy data for example purposes
+    courses_df['win_percentage'] = np.random.rand(len(courses_df))
+    courses_df['profit_loss'] = np.random.rand(len(courses_df))
+    courses_df['actual_expected'] = np.random.rand(len(courses_df))
+    
+    # Calculate scores and determine the winner
+    scored_df = calculate_scores(courses_df)
+    print("Top courses based on confidence score:")
+    print(scored_df.head(1))  # Display the top course as the "winner"
+else:
+    print("Failed to calculate scores.")
